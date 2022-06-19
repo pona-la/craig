@@ -61,6 +61,8 @@ const cb = require("./backup.js");
 
 const ecp = require("./ennuicastr-protocol.js");
 
+const { OpusDecoder, RtAudio, RtAudioFormat } = require("audify");
+
 /* A single silent packet, as an Ogg Opus file, which we can send periodically
  * as a ping */
 const silentOggOpus = Buffer.from([0x4f, 0x67, 0x67, 0x53, 0x00, 0x02, 0x00,
@@ -107,6 +109,23 @@ const emptyBuf = Buffer.alloc(0);
 
 // Our query to decide whether to run a Drive upload
 const driveStmt = db.prepare("SELECT * FROM drive WHERE id=@id");
+
+const rtAudio = new RtAudio();
+
+// Open the input/output stream
+rtAudio.openStream(
+	{ deviceId: rtAudio.getDefaultOutputDevice(), // Output device id (Get all devices using `getDevices`)
+	  nChannels: 2, // Number of channels
+	  firstChannel: 0 // First channel index on device (default = 0).
+	}, null,
+	RtAudioFormat.RTAUDIO_SINT16,
+	48000,
+	960,
+	"Craig",
+);
+
+// Start the stream
+rtAudio.start();
 
 // Fetch a rate limit
 function getRateLimit(gid) {
@@ -352,6 +371,11 @@ function session(msgOrInteraction, prefix, rec) {
     // Function to encode a single Opus chunk to the ogg file
     function encodeChunk(user, oggStream, streamNo, packetNo, chunk) {
         var chunkGranule = chunk.time;
+
+        const decoder = new OpusDecoder(48000, 2);
+        var decoded = decoder.decode(chunk, 960);
+
+        rtAudio.write(decoded);
 
         if (chunk.length > 4 && chunk[0] === 0xBE && chunk[1] === 0xDE) {
             // There's an RTP header extension here. Strip it.
